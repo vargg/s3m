@@ -115,6 +115,7 @@ class CircuitBreakerConfig(BaseModel):
 class KafkaConfig(BaseModel):
     """Kafka connection and topic configuration."""
 
+    enabled: bool = Field(default=True, description="Enable async replication via Kafka")
     bootstrap_servers: list[str] = Field(default=["localhost:9092"])
     topic: str = Field(default="s3mer.replication")
     consumer_group: str = Field(default="s3mer-workers")
@@ -284,6 +285,9 @@ class Settings(BaseSettings):
         if self.write_strategy == WriteStrategyType.MULTI_SYNC_DISTRIBUTED and not self.valkey.url:
             raise ValueError("valkey.url is required for multi_sync_distributed")
 
+        if self.requires_async_replication() and not self.kafka.enabled:
+            raise ValueError(f"kafka.enabled must be true for write_strategy={self.write_strategy.value!r}")
+
         if self.replication_mode == ReplicationMode.BATCH and len(self.get_secondaries()) > 1:
             # Warn at validation time via logger in app startup; store flag for startup hook
             pass
@@ -293,6 +297,14 @@ class Settings(BaseSettings):
     def get_secondaries(self) -> list[str]:
         """Return names of non-primary backends."""
         return [name for name, cfg in self.backends.items() if not cfg.is_primary]
+
+    def requires_async_replication(self) -> bool:
+        """Return True when the configured write strategy publishes replication tasks to Kafka."""
+        return self.write_strategy in {
+            WriteStrategyType.PRIMARY_REPLICATION,
+            WriteStrategyType.QUORUM_REPLICATION,
+            WriteStrategyType.MULTI_SYNC_DISTRIBUTED,
+        }
 
 
 _settings_override: Settings | None = None

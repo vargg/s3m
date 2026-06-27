@@ -43,6 +43,7 @@ backends:
     verify: true
 
 kafka:
+  enabled: true                         # Set false for multi_sync_simple without async replication
   bootstrap_servers:
     - localhost:9094
   topic: s3mer.replication

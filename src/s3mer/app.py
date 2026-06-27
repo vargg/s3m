@@ -8,9 +8,7 @@ from s3mer.common.metrics import get_tracker
 from s3mer.common.streaming import StreamConfig
 from s3mer.common.types import Receive, Scope, Send
 from s3mer.config.settings import ReplicationMode, load_settings
-from s3mer.kafka.broker import create_broker
-from s3mer.kafka.manager import BatchReplicationManager, PerBackendReplicationManager
-from s3mer.kafka.publisher import ReplicationPublisher
+from s3mer.kafka.factory import build_replication_stack
 from s3mer.routing.classifier import RequestClassifier
 from s3mer.routing.dispatcher import RequestDispatcher
 from s3mer.routing.http_handler import S3HTTPHandler
@@ -35,7 +33,8 @@ class S3ProxyApp:
         metrics_tracker = get_tracker()
         stream_config = StreamConfig.from_settings(settings)
 
-        self._broker = create_broker(settings.kafka)
+        replication_stack = build_replication_stack(settings, metrics_tracker)
+        self._broker = replication_stack.broker
         self._pool = BackendPool(
             settings.backends,
             metrics_tracker,
@@ -43,16 +42,10 @@ class S3ProxyApp:
             settings.circuit_breaker,
         )
 
-        publisher = ReplicationPublisher(self._broker, settings.kafka.topic)
-        if settings.replication_mode == ReplicationMode.PER_BACKEND:
-            replication_manager = PerBackendReplicationManager(publisher, metrics_tracker)
-        else:
-            replication_manager = BatchReplicationManager(publisher, metrics_tracker)
-
         self._session_store = create_multipart_session_store(settings)
         write_strategy = build_write_strategy(
             settings,
-            replication_manager,
+            replication_stack.manager,
             metrics_tracker,
             stream_config,
             self._session_store,
@@ -79,6 +72,8 @@ class S3ProxyApp:
 
         log = get_logger("s3mer.startup")
         log.info("Starting s3mer proxy", backends=list(settings.backends.keys()))
+        if not settings.kafka.enabled:
+            log.info("Kafka disabled; async replication is off")
         if settings.replication_mode == ReplicationMode.BATCH and len(settings.get_secondaries()) > 1:
             log.warning(
                 "replication_mode=batch with multiple secondaries pauses all partitions on any secondary failure; "
@@ -88,7 +83,8 @@ class S3ProxyApp:
 
         await start_multipart_session_store(self._session_store)
         await self._pool.start()
-        await self._broker.start()
+        if self._broker is not None:
+            await self._broker.start()
 
         log.info("s3mer proxy ready")
 
@@ -97,7 +93,8 @@ class S3ProxyApp:
         log = get_logger("s3mer.shutdown")
         log.info("Shutting down s3mer proxy")
 
-        await self._broker.stop()
+        if self._broker is not None:
+            await self._broker.stop()
         await self._pool.close()
         await close_multipart_session_store(self._session_store)
 

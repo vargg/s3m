@@ -16,6 +16,9 @@ logger = get_logger(__name__)
 def create_worker_app() -> AsgiFastStream:
     """Create the FastStream worker application."""
     settings = load_settings()
+    if not settings.kafka.enabled:
+        msg = "kafka.enabled must be true to run the replication worker"
+        raise ValueError(msg)
     setup_logging(settings.log_level, settings.log_file)
 
     metrics = get_tracker()

@@ -1,5 +1,7 @@
 """Replication message publisher — thin wrapper around FastStream publisher."""
 
+from typing import Protocol
+
 import structlog
 from faststream.kafka import KafkaBroker
 
@@ -7,6 +9,15 @@ from s3mer.common.logging import get_logger
 from s3mer.kafka.messages import ReplicationMessage
 
 logger = get_logger(__name__)
+
+
+class ReplicationPublisherProtocol(Protocol):
+    """Interface for publishing replication messages (Kafka or no-op)."""
+
+    @property
+    def topic(self) -> str: ...
+
+    async def publish(self, message: ReplicationMessage, topic: str | None = None) -> None: ...
 
 
 class ReplicationPublisher:

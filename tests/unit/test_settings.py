@@ -173,3 +173,42 @@ class TestKafkaConfig:
             }
         )
         assert settings.kafka.bootstrap_servers == ["kafka1:9092", "kafka2:9092"]
+
+    def test_kafka_enabled_defaults_true(self) -> None:
+        settings = Settings.model_validate({"kafka": {}})
+        assert settings.kafka.enabled is True
+
+    def test_kafka_disabled_allowed_for_multi_sync_simple(self) -> None:
+        settings = Settings.model_validate(
+            {
+                "backends": {
+                    "primary": {
+                        "endpoint_url": "http://primary:9000",
+                        "access_key": "a",
+                        "secret_key": "s",
+                        "is_primary": True,
+                    },
+                },
+                "write_strategy": "multi_sync_simple",
+                "kafka": {"enabled": False},
+            },
+        )
+        assert settings.kafka.enabled is False
+        assert settings.requires_async_replication() is False
+
+    def test_kafka_disabled_rejected_for_primary_replication(self) -> None:
+        with pytest.raises(ValueError, match=r"kafka\.enabled must be true"):
+            Settings.model_validate(
+                {
+                    "backends": {
+                        "primary": {
+                            "endpoint_url": "http://primary:9000",
+                            "access_key": "a",
+                            "secret_key": "s",
+                            "is_primary": True,
+                        },
+                    },
+                    "write_strategy": "primary_replication",
+                    "kafka": {"enabled": False},
+                },
+            )

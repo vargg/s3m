@@ -6,7 +6,7 @@ from typing import Any
 from s3mer.common.logging import get_logger
 from s3mer.common.metrics import MetricsTracker
 from s3mer.kafka.messages import ReplicationMessage
-from s3mer.kafka.publisher import ReplicationPublisher
+from s3mer.kafka.publisher import ReplicationPublisherProtocol
 from s3mer.routing.operations import S3Operation
 
 logger = get_logger(__name__)
@@ -39,12 +39,12 @@ class BaseReplicationManager(ABC):
     from the 'Execution' concern.
     """
 
-    def __init__(self, publisher: ReplicationPublisher, metrics: MetricsTracker) -> None:
+    def __init__(self, publisher: ReplicationPublisherProtocol, metrics: MetricsTracker) -> None:
         self._publisher = publisher
         self._metrics = metrics
 
     @property
-    def publisher(self) -> ReplicationPublisher:
+    def publisher(self) -> ReplicationPublisherProtocol:
         """Get the underlying replication publisher."""
         return self._publisher
 

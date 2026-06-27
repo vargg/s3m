@@ -9,7 +9,7 @@ from s3mer.common.logging import get_logger
 from s3mer.common.metrics import MetricsTracker
 from s3mer.common.streaming import BufferedStreamReader, StreamConfig, get_stream_config
 from s3mer.kafka.manager import BaseReplicationManager
-from s3mer.kafka.publisher import ReplicationPublisher
+from s3mer.kafka.publisher import ReplicationPublisherProtocol
 from s3mer.routing.operations import S3Operation
 
 logger = get_logger(__name__)
@@ -122,7 +122,7 @@ class WritePrimaryReplicationStrategy:
         self._stream_config = stream_config or get_stream_config()
 
     @property
-    def publisher(self) -> ReplicationPublisher:
+    def publisher(self) -> ReplicationPublisherProtocol:
         """Get the underlying replication publisher."""
         return self._replication_manager.publisher
 
