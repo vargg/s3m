@@ -289,8 +289,10 @@ class TestSimpleMultiSyncWriteStrategy:
         primary.execute.assert_called_once()
         secondary.execute.assert_called_once()
         assert primary.execute.call_args[0][0] == S3Operation.PUT_OBJECT
-        assert isinstance(primary.execute.call_args[0][1]["Body"].__class__.__name__, str)
-        assert primary.execute.call_args[0][1]["Body"].__class__.__name__ == "AsyncBytesReader"
+        primary_body = primary.execute.call_args[0][1]["Body"]
+        secondary_body = secondary.execute.call_args[0][1]["Body"]
+        assert primary_body == b"data"
+        assert primary_body is secondary_body
 
     async def test_partial_failure_raises_without_rollback(self, strategy: SimpleMultiSyncWriteStrategy) -> None:
         primary = _make_mock_client("primary", is_primary=True)
@@ -313,13 +315,13 @@ class TestSimpleMultiSyncWriteStrategy:
             await strategy.execute(S3Operation.CREATE_MULTIPART_UPLOAD, pool, {"Bucket": "b", "Key": "k"})
 
     async def test_streaming_body_buffering(self, strategy: SimpleMultiSyncWriteStrategy) -> None:
-        consumed_chunks = []
+        consumed = b""
 
         async def mock_execute(_op: S3Operation, params: dict[str, Any]) -> dict[str, Any]:
             body = params.get("Body")
             if body:
-                nonlocal consumed_chunks
-                consumed_chunks = [chunk async for chunk in body]
+                nonlocal consumed
+                consumed = body
             return {"ETag": '"abc"'}
 
         primary = _make_mock_client("primary", is_primary=True)
@@ -338,8 +340,9 @@ class TestSimpleMultiSyncWriteStrategy:
 
         primary.execute.assert_called_once()
         p_body = primary.execute.call_args[0][1]["Body"]
-        assert p_body.__class__.__name__ == "AsyncBytesReader"
-        assert b"".join(consumed_chunks) == b"streamchunks"
+        assert p_body == b"streamchunks"
+        assert p_body is secondary.execute.call_args[0][1]["Body"]
+        assert consumed == b"streamchunks"
 
 
 class TestQuorumReplicationStrategy:

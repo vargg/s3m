@@ -169,7 +169,7 @@ Implemented in the proxy; **target deployment** uses a subset (mostly `PutObject
 ## Tech Stack
 
 - **Language**: Python 3.12+
-- **Frameworks**: ASGI (Uvicorn), FastStream (Kafka)
+- **Frameworks**: ASGI (Granian), FastStream (Kafka)
 - **S3 client**: aiobotocore
 - **Infrastructure**: Kafka, S3-compatible storage (e.g. MinIO)
 - **Quality**: `ty`, `ruff`, pytest

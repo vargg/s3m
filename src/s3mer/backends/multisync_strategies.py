@@ -77,7 +77,7 @@ class _BaseMultiBackendWriteStrategy:
                 backend_params = self._prepare_backend_params(backend, operation, params, session)
                 if body_buffer is not None and "Body" in backend_params:
                     backend_params = backend_params.copy()
-                    backend_params["Body"] = body_buffer.open_reader()
+                    backend_params["Body"] = body_buffer.body_for_backend()
                 return backend_params
 
             result = await execute_concurrent(backends, operation, params_for_backend)

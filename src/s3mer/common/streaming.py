@@ -371,36 +371,6 @@ class AWSChunkedDecoder(AsyncIterator[bytes]):
         return chunk
 
 
-class AsyncBytesReader(AsyncIterator[bytes]):
-    """Replayable async reader over shared in-memory bytes (one allocation, many iterators)."""
-
-    def __init__(self, data: bytes, chunk_size: int = DEFAULT_CHUNK_SIZE) -> None:
-        self._data = data
-        self._offset = 0
-        self._chunk_size = chunk_size
-
-    async def read(self, n: int = -1) -> bytes:
-        if self._offset >= len(self._data):
-            return b""
-        if n == -1:
-            chunk = self._data[self._offset :]
-            self._offset = len(self._data)
-            return chunk
-        end = min(self._offset + n, len(self._data))
-        chunk = self._data[self._offset : end]
-        self._offset = end
-        return chunk
-
-    def __aiter__(self) -> Self:
-        return self
-
-    async def __anext__(self) -> bytes:
-        chunk = await self.read(self._chunk_size)
-        if not chunk:
-            raise StopAsyncIteration
-        return chunk
-
-
 def _write_spill_file(path: str, prefix_chunks: list[bytes], middle_chunk: bytes, suffix_chunks: list[bytes]) -> None:
     with Path(path).open("wb") as spill_file:
         spill_file.writelines(prefix_chunks)
@@ -425,7 +395,7 @@ class MultiSyncBodyBuffer:
         self._data = data
         self._path = path
         self._chunk_size = chunk_size
-        self._readers: list[AsyncIterator[bytes]] = []
+        self._readers: list[ConcurrentFileStream] = []
 
     @classmethod
     async def from_body(cls, body: Any, stream_config: StreamConfig) -> Self | None:
@@ -456,23 +426,29 @@ class MultiSyncBodyBuffer:
 
         return cls(data=b"".join(chunks), chunk_size=stream_config.chunk_size)
 
-    def open_reader(self) -> AsyncIterator[bytes]:
-        """Return a new independent reader positioned at the start."""
+    def body_for_backend(self) -> bytes | AsyncIterator[bytes]:
+        """
+        Return a body one backend can consume independently.
+
+        In-memory bodies are handed out as the shared bytes object: it is immutable,
+        so concurrent backends cannot disturb each other, and botocore replays bytes
+        verbatim on retry instead of demanding a seekable stream. Spilled bodies get
+        their own file stream, each with a private handle and offset.
+        """
         if self._data is not None:
-            reader: AsyncIterator[bytes] = AsyncBytesReader(self._data, self._chunk_size)
-        elif self._path is not None:
-            reader = ConcurrentFileStream(self._path, chunk_size=self._chunk_size)
-        else:
+            return self._data
+        if self._path is None:
             raise RuntimeError("MultiSyncBodyBuffer has no data")
+
+        reader = ConcurrentFileStream(self._path, chunk_size=self._chunk_size)
         self._readers.append(reader)
         return reader
 
     async def close(self) -> None:
         """Close readers and remove any spilled temp file."""
         for reader in self._readers:
-            if isinstance(reader, ConcurrentFileStream):
-                with contextlib.suppress(Exception):
-                    await reader.close()
+            with contextlib.suppress(Exception):
+                await reader.close()
         self._readers.clear()
 
         if self._path is not None:

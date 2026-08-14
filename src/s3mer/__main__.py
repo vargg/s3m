@@ -10,6 +10,6 @@ if __name__ == "__main__":
         port=8000,
         interface=Interfaces.ASGI,
         factory=True,
-        reload=True,
+        reload=False,
     )
     server.serve()
